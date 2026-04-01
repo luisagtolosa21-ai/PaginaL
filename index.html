@@ -2,28 +2,32 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Visualizador Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proyección Audioreactiva 5 Capas</title>
     <style>
-        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; height: 100%; }
-       .stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; height: 100%; font-family: sans-serif; }
         
-        /* Posicionamiento absoluto centrado para todas las capas */
+       .stage { position: relative; width: 100vw; height: 100vh; background: #000; }
+
+        /* Estilo para todas las capas */
        .layer {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             display: block;
-            pointer-events: none; /* Evita que las imágenes bloqueen el clic al botón */
+            pointer-events: none;
         }
 
+        /* Capas específicas */
        .capa-1 { z-index: 1; width: 100%; height: 100%; object-fit: cover; pointer-events: auto; }
-       .capa-2 { z-index: 2; width: 450px; } /* Reacciona a bajos */
+        #capa-bajos { z-index: 2; width: 450px; transition: transform 0.05s ease-out; }
        .capa-3 { z-index: 3; width: 400px; }
        .capa-4 { z-index: 4; width: 350px; }
-       .capa-5 { z-index: 5; width: 300px; opacity: 0; } /* Reacciona a agudos */
+        #capa-altas { z-index: 5; width: 300px; opacity: 0; transition: opacity 0.05s ease-out; }
 
-        #start-btn {
+        /* Botón de inicio */
+        #btn-start {
             position: absolute;
             top: 50%;
             left: 50%;
@@ -37,31 +41,49 @@
             cursor: pointer;
             font-size: 1.2rem;
             font-weight: bold;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Mensaje de error si las imágenes no cargan */
+       .error-msg {
+            position: absolute;
+            bottom: 10px;
+            width: 100%;
+            text-align: center;
+            color: #ff4757;
+            font-size: 0.8rem;
+            z-index: 110;
         }
     </style>
 </head>
 <body>
 
-    <button id="start-btn">EMPEZAR PROYECCIÓN</button>
+    <button id="btn-start">EMPEZAR PROYECCIÓN</button>
+    <div id="debug-info" class="error-msg"></div>
 
     <div class="stage">
-        <img src="CAPA1.PNG" class="layer capa-1" onerror="console.log('Error: fondo.jpg no encontrado')">
-        <img src="capa2.PNG" id="img-bajos" class="layer capa-2" onerror="console.log('Error: capa2.png no encontrado')">
-        <img src="capa3.PNG" class="layer capa-3" onerror="console.log('Error: capa3.png no encontrado')">
-        <img src="capa4.PNG" class="layer capa-4" onerror="console.log('Error: capa4.png no encontrado')">
-        <img src="capa5.PNG" id="img-altas" class="layer capa-5" onerror="console.log('Error: capa5.png no encontrado')">
+        <img src="capa1.jpg" class="layer capa-1" onerror="showError('Falla: capa1.jpg')">
+        <img src="capa2.png" id="capa-bajos" class="layer" onerror="showError('Falla: capa2.png')">
+        <img src="capa3.png" class="layer capa-3" onerror="showError('Falla: capa3.png')">
+        <img src="capa4.png" class="layer capa-4" onerror="showError('Falla: capa4.png')">
+        <img src="capa5.png" id="capa-altas" class="layer" onerror="showError('Falla: capa5.png')">
     </div>
 
     <script>
-        const btn = document.getElementById('start-btn');
-        const imgBajos = document.getElementById('img-bajos');
-        const imgAltas = document.getElementById('img-altas');
+        const btn = document.getElementById('btn-start');
+        const imgBajos = document.getElementById('capa-bajos');
+        const imgAltas = document.getElementById('capa-altas');
+        const debug = document.getElementById('debug-info');
+
+        function showError(msg) {
+            debug.innerHTML += msg + " | ";
+        }
 
         let audioCtx, analyser, dataArray;
 
         btn.addEventListener('click', async () => {
             try {
-                // Crear contexto de audio
+                // El contexto de audio requiere interacción del usuario
                 audioCtx = new (window.AudioContext |
 
 | window.webkitAudioContext)();
@@ -70,39 +92,41 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const source = audioCtx.createMediaStreamSource(stream);
                 
-                analyser = audioCtx.createAnalyser(); [2]
-                analyser.fftSize = 1024; // Resolución balanceada [2, 3]
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 1024; // Resolución de frecuencia
+                analyser.smoothingTimeConstant = 0.8; // Suavizado de movimiento
                 
-                source.connect(analyser); [4]
-                // No conectamos a audioCtx.destination para evitar eco (feedback)
-
+                source.connect(analyser);
+                
                 const bufferLength = analyser.frequencyBinCount;
-                dataArray = new Uint8Array(bufferLength); [4, 2]
+                dataArray = new Uint8Array(bufferLength);
 
-                btn.style.display = 'none'; // Ocultar botón tras iniciar
+                btn.style.display = 'none'; 
                 render();
             } catch (err) {
-                console.error("Fallo al iniciar:", err);
-                alert("Error: Asegúrate de usar HTTPS y permitir el micrófono.");
+                console.error("Error:", err);
+                alert("Error: Activa el micrófono y asegúrate de usar HTTPS.");
             }
         });
 
         function render() {
-            requestAnimationFrame(render); [2]
-            analyser.getByteFrequencyData(dataArray); [2]
+            requestAnimationFrame(render);
+            analyser.getByteFrequencyData(dataArray);
 
-            // --- BAJOS: Índices 0 al 10 ---
+            // --- PROCESAR BAJOS (Capa 2) ---
             let lowSum = 0;
-            for(let i = 0; i < 10; i++) lowSum += dataArray[i];
-            let lowAvg = lowSum / 10;
-            let scale = 1 + (lowAvg / 255) * 0.7; // Sensibilidad de escala
-            imgBajos.style.transform = `translate(-50%, -50%) scale(${scale})`; [5, 6]
+            for(let i = 0; i < 15; i++) lowSum += dataArray[i];
+            let lowAvg = lowSum / 15;
+            let scaleValue = 1 + (lowAvg / 255) * 0.8; 
+            imgBajos.style.transform = `translate(-50%, -50%) scale(${scaleValue})`; [4, 5, 6, 7, 8]
 
-            // --- AGUDOS: Índices 100 al 250 ---
+            // --- PROCESAR AGUDOS (Capa 5) ---
             let highSum = 0;
-            for(let i = 100; i < 250; i++) highSum += dataArray[i];
-            let highAvg = highSum / 150;
-            imgAltas.style.opacity = highAvg / 150; // Sensibilidad de aparición
+            const startH = 120;
+            const endH = 350;
+            for(let i = startH; i < endH; i++) highSum += dataArray[i];
+            let highAvg = highSum / (endH - startH);
+            imgAltas.style.opacity = highAvg / 80; // Sensibilidad ajustada
         }
     </script>
 </body>
