@@ -3,81 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador Audioreactivo Pro</title>
+    <meta http-equiv="Permissions-Policy" content="microphone=(self)">
+    <title>Proyección Audioreactiva de 5 Capas</title>
     <style>
-        /* Configuracion de pantalla completa */
         body, html { 
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden; 
-            background: #000; 
-            height: 100%; 
-            width: 100%;
-            font-family: sans-serif;
+            margin: 0; padding: 0; overflow: hidden; 
+            background: #000; height: 100%; width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        /* El escenario donde se apilan las capas */
-      .stage { 
+        /* Escenario principal que detectará el clic inicial */
+     .stage { 
             position: relative; 
-            width: 100vw; 
-            height: 100vh; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
+            width: 100vw; height: 100vh; 
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; /* Indica que se puede interactuar */
         }
 
-        /* ESTILO PARA LAS CAPAS: Se usa width auto para mantener escala original */
-      .layer { 
+        /* Estilo para las capas (Escala original con width: auto) */
+     .layer { 
             position: absolute; 
-            top: 50%; 
-            left: 50%; 
+            top: 50%; left: 50%; 
             transform: translate(-50%, -50%); 
-            pointer-events: none; /* Las imagenes no bloquean clics */
-            width: auto; 
-            height: auto;
-            max-width: 100%;
-            max-height: 100%;
+            pointer-events: none; /* No interfieren con el clic en el stage */
+            width: auto; height: auto;
+            max-width: 100%; max-height: 100%;
         }
 
-        /* Capa 1: Fondo (Cubre la pantalla) */
-      .capa-1 { z-index: 1; width: 100%; height: 100%; object-fit: cover; pointer-events: auto; }
+        /* Capa 1: Fondo (Base) */
+     .capa-1 { z-index: 1; width: 100%; height: 100%; object-fit: cover; }
         
-        /* Capa 2: Reactiva a BAJOS (Mantiene su escala original al inicio) */
+        /* Capa 2: Bajos (Escala rítmica) */
         #img-bajos { z-index: 2; transition: transform 0.05s ease-out; }
         
-        /* Capas 3 y 4: Estaticas */
-      .capa-3 { z-index: 3; }
-      .capa-4 { z-index: 4; }
+     .capa-3 { z-index: 3; }
+     .capa-4 { z-index: 4; }
         
-        /* Capa 5: Reactiva a AGUDOS */
+        /* Capa 5: Agudos (Opacidad) */
         #img-altas { z-index: 5; opacity: 0; transition: opacity 0.05s ease-out; }
 
-        /* BOTÓN DE INICIO: Centrado y sobre todo lo demás */
-        #btn-start {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 999; 
-            padding: 20px 50px;
-            background: #2ed573;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            cursor: pointer;
-            font-size: 1.5rem;
-            font-weight: bold;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-            pointer-events: auto;
+        /* Mensaje de inicio (se oculta tras el primer clic) */
+        #msg-intro {
+            position: absolute; top: 20px; width: 100%; 
+            text-align: center; color: rgba(255,255,255,0.7); 
+            z-index: 999; font-size: 1rem; letter-spacing: 1px;
+            pointer-events: none;
         }
-        #btn-start:hover { background: #26af5a; }
     </style>
 </head>
 <body>
 
-    <button id="btn-start">EMPEZAR PROYECCIÓN</button>
+    <div id="msg-intro">Haz clic en cualquier lugar para iniciar la proyección</div>
 
-    <div class="stage">
+    <div class="stage" id="main-stage">
         <img src="./capa1.PNG" class="layer capa-1">
         <img src="./capa2.PNG" id="img-bajos" class="layer">
         <img src="./capa3.PNG" class="layer capa-3">
@@ -86,20 +64,25 @@
     </div>
 
     <script>
-        const btn = document.getElementById('btn-start');
+        const stage = document.getElementById('main-stage');
+        const msg = document.getElementById('msg-intro');
         const imgBajos = document.getElementById('img-bajos');
         const imgAltas = document.getElementById('img-altas');
 
         let audioCtx, analyser, dataArray;
+        let isStarted = false;
 
-        btn.addEventListener('click', async () => {
+        // Escuchar clic en cualquier parte de la pantalla [1, 2]
+        window.addEventListener('click', async () => {
+            if (isStarted) return; // Evita inicializar múltiples veces
+
             try {
-                // Crear el contexto de audio solo tras el clic
+                // Crear contexto de audio (obligatorio tras gesto del usuario) [4, 5]
                 audioCtx = new (window.AudioContext |
 
 | window.webkitAudioContext)();
                 
-                // Solicitar acceso al micrófono explícitamente
+                // Solicitar acceso al micrófono 
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 const source = audioCtx.createMediaStreamSource(stream);
                 
@@ -110,38 +93,38 @@
                 const bufferLength = analyser.frequencyBinCount;
                 dataArray = new Uint8Array(bufferLength);
 
-                // Ocultar botón e iniciar visualización
-                btn.style.display = 'none';
-                draw();
+                // Ocultar mensaje e iniciar bucle de renderizado
+                msg.style.display = 'none';
+                isStarted = true;
+                render();
             } catch (err) {
-                console.error("Error al activar micrófono:", err);
-                alert("Para que funcione, debes hacer clic en 'Permitir' cuando Chrome lo solicite.");
+                console.error("No se pudo iniciar:", err);
+                alert("Error: Debes permitir el acceso al micrófono en el navegador.");
             }
         });
 
-        function draw() {
-            requestAnimationFrame(draw);
-            analyser.getByteFrequencyData(dataArray); [1]
+        function render() {
+            requestAnimationFrame(render);
+            analyser.getByteFrequencyData(dataArray); 
 
             // --- LÓGICA DE BAJOS (Capa 2) ---
             let lowSum = 0;
-            const lowRange = 12; 
+            const lowRange = 10; 
             for(let i = 0; i < lowRange; i++) lowSum += dataArray[i];
             let lowAvg = lowSum / lowRange;
             
-            // Fórmula de escala: en silencio la escala es 1 (tamaño original) [2]
-            // Con sonido fuerte, aumenta hasta un 40% (1.4)
-            let scale = 1 + (lowAvg / 255) * 0.4;
-            imgBajos.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            // Fórmula de escala (1 = tamaño original, hasta 1.5 con bajos potentes) [6, 7]
+            let scaleValue = 1 + (lowAvg / 255) * 0.5;
+            imgBajos.style.transform = `translate(-50%, -50%) scale(${scaleValue})`;
 
             // --- LÓGICA DE AGUDOS (Capa 5) ---
             let highSum = 0;
-            const startH = 100;
-            const endH = 300;
-            for(let i = startH; i < endH; i++) highSum += dataArray[i];
-            let highAvg = highSum / (endH - startH);
+            const startAgudos = 100;
+            const endAgudos = 300;
+            for(let i = startAgudos; i < endAgudos; i++) highSum += dataArray[i];
+            let highAvg = highSum / (endAgudos - startAgudos);
             
-            // Opacidad de 0 a 1 según el brillo del sonido
+            // Opacidad proporcional al brillo del sonido agudo
             imgAltas.style.opacity = highAvg / 100; 
         }
     </script>
