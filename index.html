@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Visualizador Audioreactivo 5 Capas</title>
+    <style>
+        body, html { margin: 0; padding: 0; overflow: hidden; background: #000; height: 100%; }
+        
+        /* Contenedor principal que centra todo */
+       .stage {
+            position: relative; [6]
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Estilo base para todas las capas */
+       .layer {
+            position: absolute; [7, 8]
+            /* Centrado absoluto */
+            top: 50%; [6, 8]
+            left: 50%; [6, 8]
+            transform: translate(-50%, -50%); [6, 8]
+            display: block;
+        }
+
+        /* CAPA 1: Fondo estático (Base) */
+       .capa-1 { z-index: 1; width: 100%; height: 100%; object-fit: cover; }
+
+        /* CAPA 2: Reactiva a BAJOS (Deformación/Escala) */
+       .capa-2 { z-index: 2; width: 500px; transition: transform 0.05s ease-out; }
+
+        /* CAPAS 3 y 4: Estáticas */
+       .capa-3 { z-index: 3; width: 450px; }
+       .capa-4 { z-index: 4; width: 400px; }
+
+        /* CAPA 5: Reactiva a AGUDOS (Opacidad) */
+       .capa-5 { 
+            z-index: 5; 
+            width: 350px; 
+            opacity: 0; 
+            transition: opacity 0.05s ease-out; 
+        }
+
+        /* Botón de inicio para cumplir con políticas de seguridad */
+        #start-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            padding: 15px 30px;
+            background: #2ed573;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: sans-serif;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <button id="start-btn">ACTIVAR MICRÓFONO</button>
+
+    <div class="stage">
+        <img src="capa1.jpg" class="layer capa-1">
+        <img src="capa2.png" id="img-bajos" class="layer capa-2">
+        <img src="capa3.png" class="layer capa-3">
+        <img src="capa4.png" class="layer capa-4">
+        <img src="capa5.png" id="img-altas" class="layer capa-5">
+    </div>
+
+    <script>
+        const btn = document.getElementById('start-btn');
+        const imgBajos = document.getElementById('img-bajos');
+        const imgAltas = document.getElementById('img-altas');
+
+        let audioCtx, analyser, dataArray;
+
+        btn.addEventListener('click', async () => {
+            if (!audioCtx) {
+                // 1. Inicializar contexto de audio tras interacción 
+                audioCtx = new (window.AudioContext |
+
+| window.webkitAudioContext)(); [9, 10]
+                analyser = audioCtx.createAnalyser(); [9, 11]
+                analyser.fftSize = 2048; // Resolución del análisis 
+                
+                const bufferLength = analyser.frequencyBinCount; [9, 12]
+                dataArray = new Uint8Array(bufferLength); [9, 13]
+
+                try {
+                    // 2. Pedir permiso para el micrófono 
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const source = audioCtx.createMediaStreamSource(stream); [9, 11]
+                    source.connect(analyser); [9, 11]
+
+                    btn.style.display = 'none'; // Ocultar botón al iniciar
+                    draw();
+                } catch (err) {
+                    alert("Se requiere acceso al micrófono.");
+                }
+            }
+        });
+
+        function draw() {
+            requestAnimationFrame(draw); [14, 15]
+            analyser.getByteFrequencyData(dataArray); [6, 15, 16]
+
+            // --- LÓGICA DE BAJOS (Capa 2) ---
+            // Los bajos están en el inicio del espectro (índices 0-12 aprox) 
+            let bassSum = 0;
+            for(let i = 0; i < 12; i++) { bassSum += dataArray[i]; }
+            let bassAverage = bassSum / 12;
+            
+            // Mapeo: de 0-255 (audio) a 1.0-1.5 (escala) [17, 18]
+            let scale = 1 + (bassAverage / 255) * 0.5;
+            imgBajos.style.transform = `translate(-50%, -50%) scale(${scale})`; [6, 12]
+
+            // --- LÓGICA DE AGUDOS (Capa 5) ---
+            // Los agudos se encuentran en frecuencias más altas (índices 100-400) 
+            let trebleSum = 0;
+            for(let i = 100; i < 400; i++) { trebleSum += dataArray[i]; }
+            let trebleAverage = trebleSum / 300;
+
+            // Mapeo: de 0-255 a 0.0-1.0 (opacidad) [18]
+            let opacity = trebleAverage / 255;
+            imgAltas.style.opacity = opacity;
+        }
+    </script>
+</body>
+</html>
