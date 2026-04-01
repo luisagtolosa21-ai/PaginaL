@@ -2,75 +2,54 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Visualizador Audioreactivo 5 Capas</title>
+    <title>Visualizador Pro</title>
     <style>
         body, html { margin: 0; padding: 0; overflow: hidden; background: #000; height: 100%; }
+       .stage { position: relative; width: 100vw; height: 100vh; overflow: hidden; }
         
-        /* Contenedor principal que centra todo */
-       .stage {
-            position: relative; [6]
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        /* Estilo base para todas las capas */
+        /* Posicionamiento absoluto centrado para todas las capas */
        .layer {
-            position: absolute; [7, 8]
-            /* Centrado absoluto */
-            top: 50%; [6, 8]
-            left: 50%; [6, 8]
-            transform: translate(-50%, -50%); [6, 8]
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             display: block;
+            pointer-events: none; /* Evita que las imágenes bloqueen el clic al botón */
         }
 
-        /* CAPA 1: Fondo estático (Base) */
-       .capa-1 { z-index: 1; width: 100%; height: 100%; object-fit: cover; }
+       .capa-1 { z-index: 1; width: 100%; height: 100%; object-fit: cover; pointer-events: auto; }
+       .capa-2 { z-index: 2; width: 450px; } /* Reacciona a bajos */
+       .capa-3 { z-index: 3; width: 400px; }
+       .capa-4 { z-index: 4; width: 350px; }
+       .capa-5 { z-index: 5; width: 300px; opacity: 0; } /* Reacciona a agudos */
 
-        /* CAPA 2: Reactiva a BAJOS (Deformación/Escala) */
-       .capa-2 { z-index: 2; width: 500px; transition: transform 0.05s ease-out; }
-
-        /* CAPAS 3 y 4: Estáticas */
-       .capa-3 { z-index: 3; width: 450px; }
-       .capa-4 { z-index: 4; width: 400px; }
-
-        /* CAPA 5: Reactiva a AGUDOS (Opacidad) */
-       .capa-5 { 
-            z-index: 5; 
-            width: 350px; 
-            opacity: 0; 
-            transition: opacity 0.05s ease-out; 
-        }
-
-        /* Botón de inicio para cumplir con políticas de seguridad */
         #start-btn {
             position: absolute;
-            top: 20px;
-            left: 20px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             z-index: 100;
-            padding: 15px 30px;
+            padding: 20px 40px;
             background: #2ed573;
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 50px;
             cursor: pointer;
-            font-family: sans-serif;
+            font-size: 1.2rem;
             font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <button id="start-btn">ACTIVAR MICRÓFONO</button>
+    <button id="start-btn">EMPEZAR PROYECCIÓN</button>
 
     <div class="stage">
-        <img src="capa1.jpg" class="layer capa-1">
-        <img src="capa2.png" id="img-bajos" class="layer capa-2">
-        <img src="capa3.png" class="layer capa-3">
-        <img src="capa4.png" class="layer capa-4">
-        <img src="capa5.png" id="img-altas" class="layer capa-5">
+        <img src="fondo.jpg" class="layer capa-1" onerror="console.log('Error: fondo.jpg no encontrado')">
+        <img src="capa2.png" id="img-bajos" class="layer capa-2" onerror="console.log('Error: capa2.png no encontrado')">
+        <img src="capa3.png" class="layer capa-3" onerror="console.log('Error: capa3.png no encontrado')">
+        <img src="capa4.png" class="layer capa-4" onerror="console.log('Error: capa4.png no encontrado')">
+        <img src="capa5.png" id="img-altas" class="layer capa-5" onerror="console.log('Error: capa5.png no encontrado')">
     </div>
 
     <script>
@@ -81,54 +60,49 @@
         let audioCtx, analyser, dataArray;
 
         btn.addEventListener('click', async () => {
-            if (!audioCtx) {
-                // 1. Inicializar contexto de audio tras interacción 
+            try {
+                // Crear contexto de audio
                 audioCtx = new (window.AudioContext |
 
-| window.webkitAudioContext)(); [9, 10]
-                analyser = audioCtx.createAnalyser(); [9, 11]
-                analyser.fftSize = 2048; // Resolución del análisis 
+| window.webkitAudioContext)();
                 
-                const bufferLength = analyser.frequencyBinCount; [9, 12]
-                dataArray = new Uint8Array(bufferLength); [9, 13]
+                // Pedir permiso de micrófono
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const source = audioCtx.createMediaStreamSource(stream);
+                
+                analyser = audioCtx.createAnalyser(); [2]
+                analyser.fftSize = 1024; // Resolución balanceada [2, 3]
+                
+                source.connect(analyser); [4]
+                // No conectamos a audioCtx.destination para evitar eco (feedback)
 
-                try {
-                    // 2. Pedir permiso para el micrófono 
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    const source = audioCtx.createMediaStreamSource(stream); [9, 11]
-                    source.connect(analyser); [9, 11]
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength); [4, 2]
 
-                    btn.style.display = 'none'; // Ocultar botón al iniciar
-                    draw();
-                } catch (err) {
-                    alert("Se requiere acceso al micrófono.");
-                }
+                btn.style.display = 'none'; // Ocultar botón tras iniciar
+                render();
+            } catch (err) {
+                console.error("Fallo al iniciar:", err);
+                alert("Error: Asegúrate de usar HTTPS y permitir el micrófono.");
             }
         });
 
-        function draw() {
-            requestAnimationFrame(draw); [14, 15]
-            analyser.getByteFrequencyData(dataArray); [6, 15, 16]
+        function render() {
+            requestAnimationFrame(render); [2]
+            analyser.getByteFrequencyData(dataArray); [2]
 
-            // --- LÓGICA DE BAJOS (Capa 2) ---
-            // Los bajos están en el inicio del espectro (índices 0-12 aprox) 
-            let bassSum = 0;
-            for(let i = 0; i < 12; i++) { bassSum += dataArray[i]; }
-            let bassAverage = bassSum / 12;
-            
-            // Mapeo: de 0-255 (audio) a 1.0-1.5 (escala) [17, 18]
-            let scale = 1 + (bassAverage / 255) * 0.5;
-            imgBajos.style.transform = `translate(-50%, -50%) scale(${scale})`; [6, 12]
+            // --- BAJOS: Índices 0 al 10 ---
+            let lowSum = 0;
+            for(let i = 0; i < 10; i++) lowSum += dataArray[i];
+            let lowAvg = lowSum / 10;
+            let scale = 1 + (lowAvg / 255) * 0.7; // Sensibilidad de escala
+            imgBajos.style.transform = `translate(-50%, -50%) scale(${scale})`; [5, 6]
 
-            // --- LÓGICA DE AGUDOS (Capa 5) ---
-            // Los agudos se encuentran en frecuencias más altas (índices 100-400) 
-            let trebleSum = 0;
-            for(let i = 100; i < 400; i++) { trebleSum += dataArray[i]; }
-            let trebleAverage = trebleSum / 300;
-
-            // Mapeo: de 0-255 a 0.0-1.0 (opacidad) [18]
-            let opacity = trebleAverage / 255;
-            imgAltas.style.opacity = opacity;
+            // --- AGUDOS: Índices 100 al 250 ---
+            let highSum = 0;
+            for(let i = 100; i < 250; i++) highSum += dataArray[i];
+            let highAvg = highSum / 150;
+            imgAltas.style.opacity = highAvg / 150; // Sensibilidad de aparición
         }
     </script>
 </body>
